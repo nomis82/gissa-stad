@@ -27,12 +27,15 @@
         <span id="timer">15</span>
       </div>
 
-      <p id="cityHint">Var ligger <strong id="cityName">?</strong></p>
+      <p id="cityHint">Var ligger <strong id="cityName"></strong>?</p>
       <div id="map"></div>
       <button onclick="submitGuess()" id="guessBtn" disabled>Skicka gissning</button>
 
       <div id="result"></div>
       <div id="scoreboard"></div>
+      <div id="startGameBtn" style="display:none;">
+        <button onclick="startGameByHost()">Starta spelet</button>
+      </div>
     </div>
   </div>
 
