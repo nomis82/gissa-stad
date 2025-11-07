@@ -1,21 +1,15 @@
 // === Firebase – ERSÄTT MED DIN CONFIG ===
-  const firebaseConfig = {
-    apiKey: "AIzaSyDzlhc2T1jcxHbNk-lPNcxMWiQpx5bBNnU",
-    authDomain: "gissa-stad.firebaseapp.com",
-    databaseURL: "https://gissa-stad-default-rtdb.europe-west1.firebasedatabase.app",
-    projectId: "gissa-stad",
-    storageBucket: "gissa-stad.firebasestorage.app",
-    messagingSenderId: "422017865549",
-    appId: "1:422017865549:web:642015d39ead35d9158904",
-    measurementId: "G-T9LWMHG6Y3"
-  };
+const firebaseConfig = {
+  apiKey: "DIN_API_KEY",
+  databaseURL: "https://din-app-default-rtdb.europe-west1.firebasedatabase.app"
+};
 firebase.initializeApp(firebaseConfig);
 const db = firebase.database();
 
 // === Speldata ===
 let map, marker, roomId, playerId, currentCity;
 let round = 1, totalRounds = 3, timeLeft = 15;
-let scores = {}, gameInterval, timerInterval;
+let scores = {}, timerInterval;
 const cities = [
   { name: "Stockholm", lat: 59.3293, lng: 18.0686 },
   { name: "Göteborg", lat: 57.7089, lng: 11.9746 },
@@ -39,47 +33,59 @@ function createRoom() {
   roomId = Math.random().toString(36).substr(2, 6).toUpperCase();
   playerId = "Värd";
   alert(`Rum skapat! Kod: ${roomId}`);
-  startGame();
+  startLobby();
 }
 
 function joinRoom() {
   roomId = document.getElementById("roomCode").value.trim().toUpperCase();
   if (!roomId) return alert("Skriv in en rumskod!");
   playerId = prompt("Ditt namn?", "Spelare") || "Spelare";
-  startGame();
+  startLobby();
 }
 
-function startGame() {
+function startLobby() {
   document.getElementById("lobby").style.display = "none";
   document.getElementById("gameArea").style.display = "block";
   document.getElementById("currentRoomCode").innerText = roomId;
   initMap();
-  initScores();
-  listenForGame();
-  if (playerId === "Värd") setTimeout(startRound, 1000);
+  listenForPlayers();
+  db.ref("rooms/" + roomId + "/players/" + playerId).set({ name: playerId });
+  if (playerId === "Värd") {
+    document.getElementById("startGameBtn").style.display = "block";
+  }
 }
 
-// === Poäng ===
-function initScores() {
-  scores = {};
-  db.ref("rooms/" + roomId + "/players").once("value", snap => {
+function startGameByHost() {
+  if (playerId !== "Värd") return;
+  db.ref("rooms/" + roomId + "/gameStarted").set(true);
+  document.getElementById("startGameBtn").style.display = "none";
+  startRound();
+}
+
+// === Lyssna på spelare ===
+function listenForPlayers() {
+  db.ref("rooms/" + roomId + "/players").on("value", snap => {
     const players = snap.val() || {};
+    scores = {};
     Object.keys(players).forEach(p => scores[p] = 0);
+    // Uppdatera UI om så behövs
   });
 }
 
-// === Kartan – TOM! ===
+// === Kartan – TOM med OpenStreetMap ===
 function initMap() {
   map = L.map('map', { zoomControl: false }).setView([62.0, 15.0], 4);
   
-  // Tom karta: Använd grå tiles utan etiketter
-  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png', {
+  // Tom karta: OpenStreetMap utan etiketter (custom style)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18,
     attribution: ''
   }).addTo(map);
 
-  // Dölj alla kontroller
+  // Dölj attribution
   map.attributionControl.setPrefix('');
+  
+  // Dölj etiketter med CSS (som tidigare)
   
   map.on('click', function(e) {
     if (marker) marker.setLatLng(e.latlng);
@@ -94,15 +100,25 @@ function listenForGame() {
 
   roomRef.on("value", snapshot => {
     const data = snapshot.val();
-    if (!data || !data.started) return;
+    if (!data) return;
+
+    if (data.gameStarted && !data.started) {
+      startRound();
+    }
 
     // Ny runda
-    if (data.round !== round) {
-      round = data.round;
+    if (data.started && data.round === round && currentCity?.name !== data.city) {
       currentCity = cities.find(c => c.name === data.city);
-      document.getElementById("cityName").innerText = currentCity.name;
+      document.getElementById("cityName").innerText = data.city || '';
       document.getElementById("roundInfo").innerText = `Runda ${round} av ${totalRounds}`;
       resetRound();
+      startTimer();
+    }
+
+    // Timer synk
+    if (data.timeLeft !== undefined) {
+      timeLeft = data.timeLeft;
+      document.getElementById("timer").innerText = timeLeft;
     }
 
     // Resultat
@@ -115,9 +131,6 @@ function listenForGame() {
       showFinalWinner(data.finalWinner);
     }
   });
-
-  // Lägg till spelare
-  db.ref("rooms/" + roomId + "/players/" + playerId).set({ name: playerId });
 }
 
 // === Starta runda (bara värd) ===
@@ -129,7 +142,8 @@ function startRound() {
     round: round,
     city: city.name,
     guesses: {},
-    result: null
+    result: null,
+    timeLeft: 15
   });
   currentCity = city;
   startTimer();
@@ -143,7 +157,6 @@ function resetRound() {
   document.getElementById("result").innerHTML = "";
   timeLeft = 15;
   document.getElementById("timer").innerText = timeLeft;
-  if (playerId === "Värd") startTimer();
 }
 
 function startTimer() {
@@ -151,6 +164,9 @@ function startTimer() {
   timerInterval = setInterval(() => {
     timeLeft--;
     document.getElementById("timer").innerText = timeLeft;
+    if (playerId === "Värd") {
+      db.ref("rooms/" + roomId + "/timeLeft").set(timeLeft);
+    }
     if (timeLeft <= 0) {
       clearInterval(timerInterval);
       if (playerId === "Värd") checkAllGuessed();
@@ -173,7 +189,6 @@ function submitGuess() {
 
 // === Kolla om alla gissat ===
 function checkAllGuessed() {
-  if (playerId !== "Värd") return;
   db.ref("rooms/" + roomId + "/guesses").once("value", snapshot => {
     const guesses = snapshot.val() || {};
     const playerCount = Object.keys(guesses).length;
@@ -197,12 +212,12 @@ function calculateRoundWinner(guesses) {
 
   // Uppdatera poäng
   results.forEach((r, i) => {
-    scores[r.name] = (scores[r.name] || 0) + (3 - i); // 3, 2, 1 poäng
+    scores[r.name] = (scores[r.name] || 0) + (results.length - i); // 3,2,1... beroende på antal
   });
 
   // Visa rätt plats
   L.marker([real.lat, real.lng], {
-    icon: L.divIcon({ className: 'correct', html: 'City', iconSize: [30, 30] })
+    icon: L.divIcon({ className: 'correct', html: '🏙️', iconSize: [30, 30] })
   }).addTo(map).bindPopup(`<strong>${real.name}</strong>`).openPopup();
 
   db.ref("rooms/" + roomId + "/result").set({
@@ -233,26 +248,33 @@ function showRoundResult(result) {
   updateScoreboard(result.scores);
 }
 
-function updateScoreboard(scores) {
-  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-  const html = sorted.map(([name, pts], i) => 
-    `${i===0 ? 'First place' : i===1 ? 'Second place' : 'Third place'} <strong>${name}</strong>: ${pts} poäng`
-  ).join("<br>");
+function updateScoreboard(currentScores) {
+  const sorted = Object.entries(currentScores).sort((a, b) => b[1] - a[1]);
+  const html = sorted.map(([name, pts]) => `<strong>${name}</strong>: ${pts} poäng`).join("<br>");
   document.getElementById("scoreboard").innerHTML = `<div style="margin-top:15px;"><strong>Poäng:</strong><br>${html}</div>`;
 }
 
 function endGame() {
-  const winner = Object.entries(scores).sort((a, b) => b[1] - a[1])[0][0];
+  if (playerId !== "Värd") return;
+  const finalScores = {...scores};
+  const winner = Object.entries(finalScores).sort((a, b) => b[1] - a[1])[0][0];
   db.ref("rooms/" + roomId + "/finalWinner").set(winner);
+  db.ref("rooms/" + roomId + "/finalScores").set(finalScores);
 }
 
 function showFinalWinner(winner) {
   clearInterval(timerInterval);
-  document.getElementById("result").innerHTML = `
-    <h2>Game over!</h2>
-    <h1>First place ${winner} vinner spelet!</h1>
-    <button onclick="location.reload()">Spela igen</button>
-  `;
+  db.ref("rooms/" + roomId + "/finalScores").once("value", snap => {
+    const finalScores = snap.val();
+    const sorted = Object.entries(finalScores).sort((a, b) => b[1] - a[1]);
+    const html = sorted.map(([name, pts]) => `<strong>${name}</strong>: ${pts} poäng`).join("<br>");
+    document.getElementById("result").innerHTML = `
+      <h2>Spelet är slut!</h2>
+      <h1>🏆 ${winner} vinner!</h1>
+      <p><strong>Slutpoäng:</strong><br>${html}</p>
+      <button onclick="location.reload()">Spela igen</button>
+    `;
+  });
 }
 
 // === Haversine ===
@@ -267,3 +289,6 @@ function haversine(lat1, lon1, lat2, lon2) {
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
   return R * c;
 }
+
+// Initiera lyssnare
+listenForGame();
