@@ -3,26 +3,36 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Gissa Stad – Närmast vinner!</title>
+  <title>Gissa Stad</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="game">
     <h1>Gissa Stad</h1>
-    <p class="subtitle">Placera pilen där du tror staden ligger – närmast vinner!</p>
+    <p class="subtitle">3 rundor – 15 sek per runda – närmast vinner!</p>
 
+    <!-- LOBBY -->
     <div id="lobby">
       <input type="text" id="roomCode" placeholder="Rumskod (t.ex. ABC123)" />
       <button onclick="joinRoom()">Gå med i rum</button>
       <button onclick="createRoom()">Skapa nytt rum</button>
     </div>
 
+    <!-- SPELOMRÅDE -->
     <div id="gameArea" style="display:none;">
+      <div id="roomHeader">
+        <strong>Rum: <span id="currentRoomCode"></span></strong>
+        <span id="roundInfo">Runda 1 av 3</span>
+        <span id="timer">15</span>
+      </div>
+
       <p id="cityHint">Var ligger <strong id="cityName">?</strong></p>
       <div id="map"></div>
       <button onclick="submitGuess()" id="guessBtn" disabled>Skicka gissning</button>
+
       <div id="result"></div>
+      <div id="scoreboard"></div>
     </div>
   </div>
 
